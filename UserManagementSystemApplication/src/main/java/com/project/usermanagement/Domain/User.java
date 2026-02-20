@@ -38,6 +38,11 @@ public class User implements Serializable {
     @Column(name = "email", nullable = false, unique = true, length = 100)
     private String email;
     
+    @NotBlank(message = "Username is required")
+    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+    @Column(name = "username", nullable = false, length = 50)
+    private String username;
+    
     @Size(min = 6, message = "Password must be at least 6 characters")
     @Column(name = "password", nullable = false)
     private String password;
