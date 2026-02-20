@@ -18,24 +18,24 @@ public class Role {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @Column(name = "name", nullable = false, unique = true, length = 50)
     private String name;
-    
+
     @Column(name = "description", length = 200)
     private String description;
-    
+
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
-    
+
     public void setIsActive(boolean active) {
         this.isActive = active;
     }
-    
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-    
+
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;

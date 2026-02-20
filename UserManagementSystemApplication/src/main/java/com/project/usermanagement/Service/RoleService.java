@@ -10,30 +10,30 @@ import java.util.Optional;
 
 @Service
 public class RoleService {
-    
+
     @Autowired
     private RoleRepository roleRepository;
-    
+
     public Role saveRole(Role role) {
         return roleRepository.save(role);
     }
-    
+
     public Optional<Role> getRoleById(Long id) {
         return roleRepository.findById(id);
     }
-    
+
     public Optional<Role> getRoleByName(String name) {
         return roleRepository.findByName(name);
     }
-    
+
     public List<Role> getAllRoles() {
         return roleRepository.findAll();
     }
-    
+
     public void deleteRole(Long id) {
         roleRepository.deleteById(id);
     }
-    
+
     public boolean existsByName(String name) {
         return roleRepository.existsByName(name);
     }

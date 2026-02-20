@@ -12,7 +12,9 @@ public interface UserInterface {
       List<User> getAllUser();
 
       void deleteUser(Long id);
-      
+
       boolean existsByUsername(String username);
+      
+      User updateUser(Long id, User user);
 
 }

@@ -13,12 +13,12 @@ import java.util.Set;
 public interface UserRoleMapRepository extends JpaRepository<UserRoleMap, Long> {
     List<UserRoleMap> findByUserId(Long userId);
     List<UserRoleMap> findByRoleId(Long roleId);
-    
+
     @Query("SELECT urm.role.name FROM UserRoleMap urm WHERE urm.user.id = :userId AND urm.isActive = true")
     Set<String> findRoleNamesByUserId(@Param("userId") Long userId);
-    
+
     @Query("SELECT urm FROM UserRoleMap urm WHERE urm.user.id = :userId AND urm.role.name = :roleName AND urm.isActive = true")
     UserRoleMap findByUserIdAndRoleName(@Param("userId") Long userId, @Param("roleName") String roleName);
-    
+
     void deleteByUserIdAndRoleId(Long userId, Long roleId);
 }
