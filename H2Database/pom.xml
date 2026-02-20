@@ -8,11 +8,11 @@
 		<version>3.2.4</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.h2.project</groupId>
-	<artifactId>H2Database</artifactId>
+	<groupId>com.project.usermanagement</groupId>
+	<artifactId>UserManagementSystem</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>H2Database</name>
-	<description>Spring boot using MySQL data base</description>
+	<name>UserManagementSystem</name>
+	<description>Spring Boot User Management System with MySQL database</description>
 	<properties>
 		<java.version>17</java.version>
 	</properties>
