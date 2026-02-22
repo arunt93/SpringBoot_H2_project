@@ -1,0 +1,56 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: user-management-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: MyStrongPassword123
+      MYSQL_DATABASE: User_Database
+      MYSQL_USER: usermanagement
+      MYSQL_PASSWORD: UserPassword123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - user-management-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Spring Boot Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: user-management-app
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/User_Database?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: usermanagement
+      SPRING_DATASOURCE_PASSWORD: UserPassword123
+      JWT_SECRET: ${JWT_SECRET:-JWTSuperSecretKeyForUserManagementSystem2024!@#$%^&*()_+-={}[]|:;<>?,./}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - user-management-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/api/v1/users/exists-by-username?username=healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  user-management-network:
+    driver: bridge
