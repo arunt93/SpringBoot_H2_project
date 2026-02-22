@@ -47,6 +47,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/users/login").permitAll()
                         .requestMatchers("/api/v1/roles/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

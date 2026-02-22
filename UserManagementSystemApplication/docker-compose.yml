@@ -35,6 +35,8 @@ services:
       SPRING_DATASOURCE_USERNAME: usermanagement
       SPRING_DATASOURCE_PASSWORD: UserPassword123
       JWT_SECRET: ${JWT_SECRET:-JWTSuperSecretKeyForUserManagementSystem2024!@#$%^&*()_+-={}[]|:;<>?,./}
+      EUREKA_SERVER_URL: http://host.docker.internal:8761/eureka
+      EUREKA_INSTANCE_HOSTNAME: host.docker.internal
     depends_on:
       mysql:
         condition: service_healthy
