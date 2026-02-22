@@ -102,6 +102,18 @@ public class UserService implements UserInterface{
         
         return userRepository.existsByUsername(username.trim());
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByEmail(String email) {
+        log.debug("Checking email existence: {}", email);
+        
+        if (email == null || email.trim().isEmpty()) {
+            return false;
+        }
+        
+        return userRepository.existsByEmail(email.trim());
+    }
     
     @Override
     public User updateUser(Long id, User user) {
