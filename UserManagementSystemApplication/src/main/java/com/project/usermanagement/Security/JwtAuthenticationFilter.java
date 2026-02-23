@@ -1,5 +1,6 @@
 package com.project.usermanagement.Security;
 
+import com.project.usermanagement.Service.RedisUserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +27,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired
     private UserDetailsService userDetailsService;
+    
+    @Autowired
+    private RedisUserService redisUserService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, 
@@ -34,6 +38,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+                // Check if token is blacklisted in Redis
+                if (redisUserService.isTokenBlacklisted(jwt)) {
+                    log.warn("Blacklisted JWT token attempted: {}", jwt.substring(0, Math.min(jwt.length(), 10)) + "...");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                
                 String username = tokenProvider.getUsernameFromToken(jwt);
 
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);

@@ -6,6 +6,7 @@ import com.project.usermanagement.DTO.LoginRequest;
 import com.project.usermanagement.DTO.RegisterRequest;
 import com.project.usermanagement.Domain.User;
 import com.project.usermanagement.Security.JwtTokenProvider;
+import com.project.usermanagement.Service.RedisUserService;
 import com.project.usermanagement.Service.UserInterface;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.Duration;
 
 @Slf4j
 @RestController
@@ -35,6 +38,9 @@ public class AuthController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+    
+    @Autowired
+    private RedisUserService redisUserService;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<JwtAuthResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
@@ -51,6 +57,13 @@ public class AuthController {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             String jwt = tokenProvider.generateToken(authentication);
             
+            // Store session in Redis
+            User user = (User) authentication.getPrincipal();
+            redisUserService.storeUserSession(jwt, user, Duration.ofHours(24));
+            
+            // Clear failed login attempts if any
+            redisUserService.clearFailedAttempts(loginRequest.getUsername());
+            
             JwtAuthResponse authResponse = new JwtAuthResponse();
             authResponse.setAccessToken(jwt);
             authResponse.setUsername(loginRequest.getUsername());
@@ -61,6 +74,17 @@ public class AuthController {
             
         } catch (Exception e) {
             log.error("Login failed for user: {}", loginRequest.getUsername(), e);
+            
+            // Increment failed login attempts
+            redisUserService.incrementFailedAttempts(loginRequest.getUsername());
+            
+            // Check if account should be locked
+            int attempts = redisUserService.getFailedAttempts(loginRequest.getUsername());
+            if (attempts >= 5) {
+                redisUserService.lockUserAccount(loginRequest.getUsername(), Duration.ofMinutes(30));
+                log.warn("Account locked due to multiple failed attempts: {}", loginRequest.getUsername());
+            }
+            
             ApiResponse<JwtAuthResponse> response = ApiResponse.error("Invalid username or password", "AUTHENTICATION_FAILED");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
         }
@@ -98,6 +122,37 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Registration failed for user: {}", registerRequest.getUsername(), e);
             ApiResponse<User> response = ApiResponse.error("Registration failed", "REGISTRATION_ERROR");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+    
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<String>> logoutUser() {
+        try {
+            String token = null;
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            
+            if (authentication != null && authentication.getCredentials() != null) {
+                token = authentication.getCredentials().toString();
+            }
+            
+            if (token != null) {
+                // Remove session from Redis
+                redisUserService.removeUserSession(token);
+                
+                // Blacklist the token
+                redisUserService.blacklistToken(token, Duration.ofHours(24));
+            }
+            
+            SecurityContextHolder.clearContext();
+            
+            ApiResponse<String> response = ApiResponse.success("Logout successful", "User logged out successfully");
+            log.info("User logged out successfully");
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("Logout failed", e);
+            ApiResponse<String> response = ApiResponse.error("Logout failed", "LOGOUT_ERROR");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }

@@ -4,9 +4,12 @@ import com.project.usermanagement.Domain.User;
 import com.project.usermanagement.Repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -15,11 +18,13 @@ import java.util.List;
 public class UserService implements UserInterface{
 
     private final UserRepository userRepository;
+    private final RedisUserService redisUserService;
 
     @Autowired
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, RedisUserService redisUserService) {
         this.userRepository = userRepository;
-        log.info("UserService initialized");
+        this.redisUserService = redisUserService;
+        log.info("UserService initialized with Redis caching");
     }
 
     @Override
@@ -31,14 +36,29 @@ public class UserService implements UserInterface{
             throw new IllegalArgumentException("User ID must be a positive number");
         }
         
-        return userRepository.findById(id)
+        // Try to get from Redis cache first
+        User cachedUser = redisUserService.getCachedUser(id);
+        if (cachedUser != null) {
+            log.debug("User found in Redis cache: {}", id);
+            return cachedUser;
+        }
+        
+        // If not in cache, get from database
+        User user = userRepository.findById(id)
                 .orElseThrow(() -> {
                     log.warn("User not found with id: {}", id);
                     return new RuntimeException("User not found with id: " + id);
                 });
+        
+        // Cache the user for future requests
+        redisUserService.cacheUser(user);
+        log.debug("User cached in Redis: {}", id);
+        
+        return user;
     }
 
     @Override
+    @CacheEvict(value = {"users", "userByEmail"}, allEntries = true)
     public User saveUser(User user) {
         log.debug("Saving user: {}", user.getEmail());
         
@@ -49,6 +69,11 @@ public class UserService implements UserInterface{
         }
         
         User savedUser = userRepository.save(user);
+        
+        // Cache the newly saved user
+        redisUserService.cacheUser(savedUser);
+        redisUserService.cacheUserByEmail(savedUser.getEmail(), savedUser);
+        
         log.info("User saved successfully with id: {}", savedUser.getId());
         return savedUser;
     }
@@ -83,11 +108,15 @@ public class UserService implements UserInterface{
             throw new IllegalArgumentException("User ID must be a positive number");
         }
         
-        if (!userRepository.existsById(id)) {
-            throw new RuntimeException("User not found with id: " + id);
-        }
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
         
         userRepository.deleteById(id);
+        
+        // Remove from Redis cache
+        redisUserService.evictUserCache(id);
+        redisUserService.evictUserCacheByEmail(user.getEmail());
+        
         log.info("User deleted successfully with id: {}", id);
     }
 
@@ -116,6 +145,7 @@ public class UserService implements UserInterface{
     }
     
     @Override
+    @CacheEvict(value = {"users", "userByEmail"}, allEntries = true)
     public User updateUser(Long id, User user) {
         log.debug("Updating user with id: {}", id);
         
@@ -146,6 +176,11 @@ public class UserService implements UserInterface{
         existingUser.setPassword(user.getPassword());
         
         User updatedUser = userRepository.save(existingUser);
+        
+        // Update Redis cache
+        redisUserService.cacheUser(updatedUser);
+        redisUserService.cacheUserByEmail(updatedUser.getEmail(), updatedUser);
+        
         log.info("User updated successfully with id: {}", updatedUser.getId());
         return updatedUser;
     }
