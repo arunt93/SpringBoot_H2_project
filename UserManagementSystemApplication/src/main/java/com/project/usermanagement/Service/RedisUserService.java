@@ -20,8 +20,13 @@ public class RedisUserService {
 
     // Cache user by ID
     public void cacheUser(User user) {
-        String key = USER_CACHE_PREFIX + user.getId();
-        redisTemplate.opsForValue().set(key, user, Duration.ofHours(1));
+        try {
+            String key = USER_CACHE_PREFIX + user.getId();
+            redisTemplate.opsForValue().set(key, user, Duration.ofHours(1));
+        } catch (Exception e) {
+            // Log but don't fail the operation
+            System.err.println("Failed to cache user by ID: " + e.getMessage());
+        }
     }
 
     // Get cached user by ID
@@ -32,8 +37,13 @@ public class RedisUserService {
 
     // Cache user by email
     public void cacheUserByEmail(String email, User user) {
-        String key = USER_EMAIL_PREFIX + email;
-        redisTemplate.opsForValue().set(key, user, Duration.ofHours(1));
+        try {
+            String key = USER_EMAIL_PREFIX + email;
+            redisTemplate.opsForValue().set(key, user, Duration.ofHours(1));
+        } catch (Exception e) {
+            // Log but don't fail the operation
+            System.err.println("Failed to cache user by email: " + e.getMessage());
+        }
     }
 
     // Get cached user by email

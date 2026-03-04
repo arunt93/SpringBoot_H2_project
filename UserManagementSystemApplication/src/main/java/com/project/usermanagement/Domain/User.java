@@ -18,7 +18,12 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "users")
+@Table(name = "users", 
+       uniqueConstraints = {
+           @UniqueConstraint(columnNames = "email"),
+           @UniqueConstraint(columnNames = "username"),
+           @UniqueConstraint(columnNames = "phone_number")
+       })
 public class User implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -40,14 +45,14 @@ public class User implements Serializable {
 
     @NotBlank(message = "Username is required")
     @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
-    @Column(name = "username", nullable = false, length = 50)
+    @Column(name = "username", nullable = false, unique = true, length = 50)
     private String username;
 
     @Size(min = 6, message = "Password must be at least 6 characters")
     @Column(name = "password", nullable = false)
     private String password;
 
-    @Column(name = "phone_number", length = 20)
+    @Column(name = "phone_number", length = 20, unique = true)
     private String phoneNumber;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

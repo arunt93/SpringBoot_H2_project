@@ -58,7 +58,7 @@ public class AuthController {
             String jwt = tokenProvider.generateToken(authentication);
             
             // Store session in Redis
-            User user = (User) authentication.getPrincipal();
+            User user = userService.getUserByUsername(loginRequest.getUsername());
             redisUserService.storeUserSession(jwt, user, Duration.ofHours(24));
             
             // Clear failed login attempts if any

@@ -17,6 +17,8 @@ public interface UserInterface {
       
       boolean existsByEmail(String email);
       
+      User getUserByUsername(String username);
+      
       User updateUser(Long id, User user);
 
 }

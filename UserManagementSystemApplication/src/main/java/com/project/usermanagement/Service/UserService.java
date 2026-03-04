@@ -1,6 +1,7 @@
 package com.project.usermanagement.Service;
 
 import com.project.usermanagement.Domain.User;
+import com.project.usermanagement.Exception.DuplicateResourceException;
 import com.project.usermanagement.Repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,23 +60,63 @@ public class UserService implements UserInterface{
 
     @Override
     @CacheEvict(value = {"users", "userByEmail"}, allEntries = true)
+    @Transactional
     public User saveUser(User user) {
         log.debug("Saving user: {}", user.getEmail());
         
         validateUser(user);
         
-        if (userRepository.existsByEmail(user.getEmail())) {
-            throw new RuntimeException("Email already exists: " + user.getEmail());
+        try {
+            // Check for duplicate email (application-level check)
+            if (userRepository.existsByEmail(user.getEmail())) {
+                throw new DuplicateResourceException("Email", user.getEmail());
+            }
+            
+            // Check for duplicate username (application-level check)
+            if (userRepository.existsByUsername(user.getUsername())) {
+                throw new DuplicateResourceException("Username", user.getUsername());
+            }
+            
+            // Check for duplicate phone number (if provided)
+            if (user.getPhoneNumber() != null && !user.getPhoneNumber().trim().isEmpty()) {
+                if (userRepository.existsByPhoneNumber(user.getPhoneNumber().trim())) {
+                    throw new DuplicateResourceException("Phone number", user.getPhoneNumber().trim());
+                }
+            }
+            
+            User savedUser = userRepository.save(user);
+            
+            // Cache the newly saved user (handle Redis serialization gracefully)
+            try {
+                redisUserService.cacheUser(savedUser);
+                redisUserService.cacheUserByEmail(savedUser.getEmail(), savedUser);
+            } catch (Exception e) {
+                log.warn("Failed to cache user in Redis: {}", e.getMessage());
+                // Don't fail the operation if caching fails
+            }
+            
+            log.info("User saved successfully with id: {}", savedUser.getId());
+            return savedUser;
+            
+        } catch (Exception e) {
+            // Handle database constraint violations
+            if (e.getMessage() != null) {
+                String message = e.getMessage().toLowerCase();
+                if (message.contains("duplicate") || message.contains("unique")) {
+                    if (message.contains("email")) {
+                        throw new DuplicateResourceException("Email", user.getEmail());
+                    } else if (message.contains("username")) {
+                        throw new DuplicateResourceException("Username", user.getUsername());
+                    } else if (message.contains("phone") || message.contains("phone_number")) {
+                        throw new DuplicateResourceException("Phone number", user.getPhoneNumber());
+                    } else {
+                        throw new DuplicateResourceException("Resource", user.getEmail(), "Duplicate entry found. Please check your data.");
+                    }
+                }
+            }
+            // Re-throw other exceptions
+            throw e;
         }
-        
-        User savedUser = userRepository.save(user);
-        
-        // Cache the newly saved user
-        redisUserService.cacheUser(savedUser);
-        redisUserService.cacheUserByEmail(savedUser.getEmail(), savedUser);
-        
-        log.info("User saved successfully with id: {}", savedUser.getId());
-        return savedUser;
     }
     
     private void validateUser(User user) {
@@ -87,6 +128,9 @@ public class UserService implements UserInterface{
         }
         if (user.getUsername() == null || user.getUsername().trim().isEmpty()) {
             throw new IllegalArgumentException("User username is required");
+        }
+        if (user.getPhoneNumber() != null && user.getPhoneNumber().trim().isEmpty()) {
+            user.setPhoneNumber(null); // Convert empty string to null
         }
     }
 
@@ -145,7 +189,24 @@ public class UserService implements UserInterface{
     }
     
     @Override
+    @Transactional(readOnly = true)
+    public User getUserByUsername(String username) {
+        log.debug("Fetching user by username: {}", username);
+        
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("Username cannot be null or empty");
+        }
+        
+        return userRepository.findByUsername(username.trim())
+                .orElseThrow(() -> {
+                    log.warn("User not found with username: {}", username);
+                    return new RuntimeException("User not found with username: " + username);
+                });
+    }
+    
+    @Override
     @CacheEvict(value = {"users", "userByEmail"}, allEntries = true)
+    @Transactional
     public User updateUser(Long id, User user) {
         log.debug("Updating user with id: {}", id);
         
@@ -155,33 +216,79 @@ public class UserService implements UserInterface{
         
         validateUser(user);
         
-        User existingUser = userRepository.findById(id)
-                .orElseThrow(() -> {
-                    log.warn("User not found for update with id: {}", id);
-                    return new RuntimeException("User not found with id: " + id);
-                });
-        
-        // Check if email is being changed to another existing email
-        if (!existingUser.getEmail().equals(user.getEmail()) && 
-            userRepository.existsByEmail(user.getEmail())) {
-            throw new RuntimeException("Email already exists: " + user.getEmail());
+        try {
+            User existingUser = userRepository.findById(id)
+                    .orElseThrow(() -> {
+                        log.warn("User not found for update with id: {}", id);
+                        return new RuntimeException("User not found with id: " + id);
+                    });
+            
+            // Check if email is being changed to another existing email
+            if (!existingUser.getEmail().equals(user.getEmail()) && 
+                userRepository.existsByEmail(user.getEmail())) {
+                throw new RuntimeException("Email already exists: " + user.getEmail());
+            }
+            
+            // Check if username is being changed to another existing username
+            if (!existingUser.getUsername().equals(user.getUsername()) && 
+                userRepository.existsByUsername(user.getUsername())) {
+                throw new RuntimeException("Username already exists: " + user.getUsername());
+            }
+            
+            // Check if phone number is being changed to another existing phone number
+            String newPhone = user.getPhoneNumber();
+            String existingPhone = existingUser.getPhoneNumber();
+            if (newPhone != null && !newPhone.trim().isEmpty()) {
+                newPhone = newPhone.trim();
+                if (existingPhone == null || !existingPhone.equals(newPhone)) {
+                    if (userRepository.existsByPhoneNumber(newPhone)) {
+                        throw new RuntimeException("Phone number already exists: " + newPhone);
+                    }
+                }
+            }
+            
+            // Update fields
+            existingUser.setFirstName(user.getFirstName());
+            existingUser.setLastName(user.getLastName());
+            existingUser.setEmail(user.getEmail());
+            existingUser.setUsername(user.getUsername());
+            existingUser.setPhoneNumber(newPhone);
+            if (user.getPassword() != null && !user.getPassword().trim().isEmpty()) {
+                existingUser.setPassword(user.getPassword());
+            }
+            
+            User updatedUser = userRepository.save(existingUser);
+            
+            // Update Redis cache (handle Redis serialization gracefully)
+            try {
+                redisUserService.cacheUser(updatedUser);
+                redisUserService.cacheUserByEmail(updatedUser.getEmail(), updatedUser);
+            } catch (Exception e) {
+                log.warn("Failed to cache updated user in Redis: {}", e.getMessage());
+                // Don't fail the operation if caching fails
+            }
+            
+            log.info("User updated successfully with id: {}", updatedUser.getId());
+            return updatedUser;
+            
+        } catch (Exception e) {
+            // Handle database constraint violations
+            if (e.getMessage() != null) {
+                String message = e.getMessage().toLowerCase();
+                if (message.contains("duplicate") || message.contains("unique")) {
+                    if (message.contains("email")) {
+                        throw new RuntimeException("Email already exists: " + user.getEmail());
+                    } else if (message.contains("username")) {
+                        throw new RuntimeException("Username already exists: " + user.getUsername());
+                    } else if (message.contains("phone") || message.contains("phone_number")) {
+                        throw new RuntimeException("Phone number already exists: " + user.getPhoneNumber());
+                    } else {
+                        throw new RuntimeException("Duplicate entry found. Please check your data.");
+                    }
+                }
+            }
+            // Re-throw other exceptions
+            throw e;
         }
-        
-        // Update fields
-        existingUser.setFirstName(user.getFirstName());
-        existingUser.setLastName(user.getLastName());
-        existingUser.setEmail(user.getEmail());
-        existingUser.setUsername(user.getUsername());
-        existingUser.setPhoneNumber(user.getPhoneNumber());
-        existingUser.setPassword(user.getPassword());
-        
-        User updatedUser = userRepository.save(existingUser);
-        
-        // Update Redis cache
-        redisUserService.cacheUser(updatedUser);
-        redisUserService.cacheUserByEmail(updatedUser.getEmail(), updatedUser);
-        
-        log.info("User updated successfully with id: {}", updatedUser.getId());
-        return updatedUser;
     }
 }
